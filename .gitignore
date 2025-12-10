@@ -1,0 +1,17 @@
+# Dependencies
+node_modules
+/frontend/client/node_modules
+/backend/venv
+__pycache__
+
+# Build outputs
+dist
+/frontend/client/dist
+
+# Environment variables & Database
+.env
+*.db
+*.sqlite3
+
+# OS generated files
+.DS_Store
