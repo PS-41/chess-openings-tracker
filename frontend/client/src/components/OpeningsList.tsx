@@ -9,6 +9,7 @@ export interface Opening {
   lichess_link?: string;
   image_filename?: string;
   tutorials?: string[];
+  notes?: string;
 }
 
 interface OpeningsListProps {

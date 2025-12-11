@@ -25,6 +25,7 @@ def add_opening():
     name = request.form.get('name')
     side = request.form.get('side')
     moves = request.form.get('moves')
+    notes = request.form.get('notes')
     
     # Handle Tutorial Links (Expected as multiple 'tutorials' keys)
     # Frontend will send: tutorials[0], tutorials[1]... or just multiple 'tutorials' fields
@@ -58,7 +59,8 @@ def add_opening():
         side=side,
         moves=moves,
         lichess_link=generated_lichess_link,
-        image_filename=image_filename
+        image_filename=image_filename,
+        notes=notes
     )
     
     db.session.add(new_opening)

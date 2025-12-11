@@ -18,6 +18,8 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
   // Tutorial Links State
   const [tutorialLinks, setTutorialLinks] = useState<string[]>(['']); // Start with one empty input
 
+  const [notes, setNotes] = useState('');
+
   const [loading, setLoading] = useState(false);
 
   // --- Handle Paste for Image ---
@@ -69,6 +71,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
     formData.append('name', name);
     formData.append('side', side);
     formData.append('moves', moves);
+    formData.append('notes', notes);
     
     if (imageFile) {
       formData.append('image', imageFile);
@@ -134,6 +137,18 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
           placeholder="e.g. 1. e4 c5 2. Nf3 d6" 
         />
         <p className="text-xs text-gray-500 mt-1">Lichess link will be auto-generated from this.</p>
+      </div>
+
+      {/* --- NEW NOTES SECTION --- */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Personal Notes (Optional)</label>
+        <textarea 
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-yellow-50/50"
+          placeholder="e.g. Watch out for the knight sacrifice on f7..." 
+        />
       </div>
 
       {/* Image Upload (Paste Support) */}
