@@ -1,4 +1,4 @@
-import React, { useState, ClipboardEvent } from 'react';
+import React, { useState, useRef, ClipboardEvent } from 'react';
 import axios from 'axios';
 
 interface AddOpeningFormProps {
@@ -21,6 +21,12 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
   const [notes, setNotes] = useState('');
 
   const [loading, setLoading] = useState(false);
+
+  // Error State
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Ref for scrolling to top
+  const formTopRef = useRef<HTMLDivElement>(null);
 
   // --- Handle Paste for Image ---
   const handlePaste = (e: ClipboardEvent<HTMLDivElement>) => {
@@ -66,6 +72,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
     if (!moves) return alert("Moves are required!");
 
     setLoading(true);
+    setErrorMessage(null); // Clear previous errors
 
     const formData = new FormData();
     formData.append('name', name);
@@ -87,17 +94,40 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding opening:", error);
-      alert("Failed to add opening.");
+
+      // Elegantly handle the specific error message from backend
+      if (error.response && error.response.data && error.response.data.error) {
+        setErrorMessage(error.response.data.error);
+      } else {
+        setErrorMessage("Failed to add opening. Please try again.");
+      }
+      // Scroll to top on error
+      if (formTopRef.current) {
+        formTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto px-1">
-      
+    // REMOVED: max-h-[80vh] and overflow-y-auto to fix double scrollbars
+    // The Modal component already handles scrolling.
+    <form onSubmit={handleSubmit} className="space-y-4 px-1">
+
+      {/* Invisible anchor for scrolling */}
+      <div ref={formTopRef} />
+
+      {/* Error Banner Display */}
+      {errorMessage && (
+        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded text-sm mb-4 animate-pulse">
+          <p className="font-bold">Error</p>
+          <p>{errorMessage}</p>
+        </div>
+      )}
+
       {/* Name */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Opening Name *</label>
@@ -105,7 +135,11 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          className={`w-full p-2 border rounded-lg focus:ring-2 outline-none ${
+            errorMessage?.includes('name')
+              ? 'border-red-500 focus:ring-red-200'
+              : 'border-gray-300 focus:ring-blue-500'
+          }`}
           placeholder="e.g. Sicilian Defense" 
         />
       </div>
@@ -133,13 +167,17 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
           rows={3}
           value={moves}
           onChange={(e) => setMoves(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+          className={`w-full p-2 border rounded-lg focus:ring-2 outline-none font-mono text-sm ${
+            errorMessage?.includes('PGN')
+              ? 'border-red-500 focus:ring-red-200'
+              : 'border-gray-300 focus:ring-blue-500'
+          }`}
           placeholder="e.g. 1. e4 c5 2. Nf3 d6" 
         />
         <p className="text-xs text-gray-500 mt-1">Lichess link will be auto-generated from this.</p>
       </div>
 
-      {/* --- NEW NOTES SECTION --- */}
+      {/* --- NOTES SECTION --- */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Personal Notes (Optional)</label>
         <textarea 

@@ -34,6 +34,17 @@ def add_opening():
     if not name or not side or not moves:
         return jsonify({'error': 'Name, Side, and Moves are required'}), 400
 
+    # Check for duplicates before processing
+    
+    # Check if Name exists (Case insensitive check is often better, but strict is fine too)
+    if Opening.query.filter_by(name=name).first():
+        return jsonify({'error': f"An opening with the name '{name}' already exists."}), 409
+
+    # Check if PGN/Moves exists
+    existing_pgn = Opening.query.filter_by(moves=moves).first()
+    if existing_pgn:
+        return jsonify({'error': f"This PGN sequence already exists in the opening: '{existing_pgn.name}'"}), 409
+
     # 2. Generate Lichess Link Automatically
     encoded_pgn = urllib.parse.quote(moves)
     generated_lichess_link = f"https://lichess.org/analysis/pgn/{encoded_pgn}"
