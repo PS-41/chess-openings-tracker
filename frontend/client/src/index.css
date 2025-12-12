@@ -4,6 +4,21 @@
 
 @layer base {
   body {
-    @apply bg-gray-100 text-primary-text font-serif;
+    /* Changed from font-serif to font-sans for a more modern app feel */
+    @apply bg-gray-50 text-slate-800 font-sans antialiased;
   }
+}
+
+/* Custom scrollbar for a cleaner look */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
 }

@@ -16,7 +16,7 @@ function App() {
   
   // Modal State for Adding
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingOpening, setEditingOpening] = useState<Opening | null>(null); // For "Add Variation" mode
+  const [editingOpening, setEditingOpening] = useState<Opening | null>(null);
 
   // Details Modal State
   const [selectedVariation, setSelectedVariation] = useState<{name: string, data: Variation} | null>(null);
@@ -54,87 +54,125 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 font-sans pb-20">
+    <div className="min-h-screen bg-gray-50/50 font-sans pb-20">
       
       {/* --- Header --- */}
-      <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-800 tracking-wide mb-4 md:mb-0">
-            ♚ Chess Openings
-          </h1>
+      <header className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20 border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+          
+          {/* Logo / Title */}
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">♟️</span>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Chess Openings
+            </h1>
+          </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-3 md:gap-6 w-full md:w-auto justify-end">
+             {/* View Toggle (Segmented Control) */}
+            <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200">
+              <button
+                onClick={() => setViewMode('split')}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  isSplit ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Split
+              </button>
+              <button
+                onClick={() => setViewMode('toggle')}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  !isSplit ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Single
+              </button>
+            </div>
+
              {/* Add Button */}
              <button 
                 onClick={() => openAddModal(null)}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center"
+                className="
+                  flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white 
+                  px-5 py-2 rounded-lg text-sm font-semibold transition-all shadow-md 
+                  hover:shadow-lg active:scale-95
+                "
              >
-                <span className="mr-2 text-lg font-bold">+</span> New Opening
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                </svg>
+                New Opening
              </button>
-
-             {/* View Toggle */}
-            <div className="flex items-center bg-gray-50 p-1.5 rounded-lg border border-gray-200">
-              <button
-                onClick={() => setViewMode(isSplit ? 'toggle' : 'split')}
-                className="px-3 py-1.5 text-xs md:text-sm font-medium text-gray-600 hover:text-black transition-colors"
-              >
-                {isSplit ? 'Single View' : 'Split View'}
-              </button>
-
-              {!isSplit && (
-                <div className="flex bg-gray-200 rounded ml-3">
-                  <button
-                    onClick={() => setActiveSide('white')}
-                    className={`px-3 py-1 rounded text-xs md:text-sm font-medium transition-all ${
-                      activeSide === 'white' ? 'bg-white shadow text-black' : 'text-gray-500'
-                    }`}
-                  >
-                    White
-                  </button>
-                  <button
-                    onClick={() => setActiveSide('black')}
-                    className={`px-3 py-1 rounded text-xs md:text-sm font-medium transition-all ${
-                      activeSide === 'black' ? 'bg-black-side shadow text-white' : 'text-gray-500'
-                    }`}
-                  >
-                    Black
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </header>
 
       {/* --- Main Content --- */}
-      <main className="max-w-7xl mx-auto p-6">
-        {isSplit ? (
-          <div className="flex flex-col md:flex-row gap-8">
-            <div className="flex-1 bg-white-side/30 p-6 rounded-xl border border-white-side">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b-2 border-white-side pb-2">White</h2>
-              <OpeningsList 
-                side="white" 
-                openings={openings} 
-                onVariationClick={handleVariationClick}
-                onAddVariation={(op) => openAddModal(op)}
-              />
+      <main className="max-w-7xl mx-auto p-6 mt-4">
+        
+        {!isSplit && (
+          /* Single View Toggle Side Selector */
+          <div className="flex justify-center mb-8">
+            <div className="flex p-1 bg-white border border-gray-200 rounded-xl shadow-sm">
+              <button
+                onClick={() => setActiveSide('white')}
+                className={`px-8 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeSide === 'white' ? 'bg-amber-100 text-amber-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                White
+              </button>
+              <button
+                onClick={() => setActiveSide('black')}
+                className={`px-8 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeSide === 'black' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Black
+              </button>
             </div>
-            <div className="flex-1 bg-black-side/20 p-6 rounded-xl border border-black-side">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b-2 border-black-side pb-2">Black</h2>
-              <OpeningsList 
-                side="black" 
-                openings={openings} 
-                onVariationClick={handleVariationClick}
-                onAddVariation={(op) => openAddModal(op)}
-              />
+          </div>
+        )}
+
+        {isSplit ? (
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* White Column */}
+            <div className="flex-1">
+              <div className="bg-amber-50/50 p-6 rounded-2xl border border-amber-100 min-h-[500px]">
+                <h2 className="text-xl font-bold mb-6 text-amber-900 flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-amber-400"></span>
+                  White
+                </h2>
+                <OpeningsList 
+                  side="white" 
+                  openings={openings} 
+                  onVariationClick={handleVariationClick}
+                  onAddVariation={(op) => openAddModal(op)}
+                />
+              </div>
+            </div>
+
+            {/* Black Column */}
+            <div className="flex-1">
+              <div className="bg-slate-200/50 p-6 rounded-2xl border border-slate-300 min-h-[500px]">
+                <h2 className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-slate-700"></span>
+                  Black
+                </h2>
+                <OpeningsList 
+                  side="black" 
+                  openings={openings} 
+                  onVariationClick={handleVariationClick}
+                  onAddVariation={(op) => openAddModal(op)}
+                />
+              </div>
             </div>
           </div>
         ) : (
           <div className="max-w-3xl mx-auto">
-             <div className={`p-8 rounded-xl shadow-lg transition-colors duration-500 ${
-               activeSide === 'white' ? 'bg-white-side/30' : 'bg-black-side/20'
+             <div className={`p-8 rounded-2xl shadow-sm border transition-colors duration-500 ${
+               activeSide === 'white' ? 'bg-amber-50/50 border-amber-100' : 'bg-slate-100 border-slate-200'
              }`}>
-               <h2 className="text-3xl font-bold mb-8 text-center capitalize">{activeSide} Openings</h2>
                <OpeningsList 
                  side={activeSide} 
                  openings={openings} 
@@ -150,7 +188,7 @@ function App() {
       <Modal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        title={editingOpening ? `Add Variation to ${editingOpening.name}` : "Add New Opening"}
+        title={editingOpening ? `Add Variation to ${editingOpening.name}` : "Create New Opening"}
       >
         <AddOpeningForm 
           onSuccess={handleAddSuccess} 
