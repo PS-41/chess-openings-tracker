@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import OpeningsList, { type Opening } from './components/OpeningsList';
+import OpeningsList, { type Opening, type Variation } from './components/OpeningsList';
 import Modal from './components/Modal';
 import AddOpeningForm from './components/AddOpeningForm';
 import OpeningDetails from './components/OpeningDetails';
@@ -13,15 +13,17 @@ function App() {
   
   // Data State
   const [openings, setOpenings] = useState<Opening[]>([]);
+  
+  // Modal State for Adding
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingOpening, setEditingOpening] = useState<Opening | null>(null); // For "Add Variation" mode
 
   // Details Modal State
-  const [selectedOpening, setSelectedOpening] = useState<Opening | null>(null);
+  const [selectedVariation, setSelectedVariation] = useState<{name: string, data: Variation} | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const isSplit = viewMode === 'split';
 
-  // Fetch Openings from Backend
   const fetchOpenings = async () => {
     try {
       const response = await axios.get('http://127.0.0.1:5000/api/openings');
@@ -31,18 +33,23 @@ function App() {
     }
   };
 
-  // Initial Fetch
   useEffect(() => {
     fetchOpenings();
   }, []);
 
   const handleAddSuccess = () => {
     setIsModalOpen(false);
-    fetchOpenings(); // Refresh the list
+    setEditingOpening(null);
+    fetchOpenings(); 
   };
 
-  const handleOpeningClick = (opening: Opening) => {
-    setSelectedOpening(opening);
+  const openAddModal = (openingToAddTo: Opening | null = null) => {
+    setEditingOpening(openingToAddTo);
+    setIsModalOpen(true);
+  };
+
+  const handleVariationClick = (openingName: string, variation: Variation) => {
+    setSelectedVariation({ name: openingName, data: variation });
     setIsDetailsOpen(true);
   };
 
@@ -59,10 +66,10 @@ function App() {
           <div className="flex items-center space-x-4">
              {/* Add Button */}
              <button 
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => openAddModal(null)}
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center"
              >
-                <span className="mr-2 text-lg font-bold">+</span> Add Opening
+                <span className="mr-2 text-lg font-bold">+</span> New Opening
              </button>
 
              {/* View Toggle */}
@@ -108,7 +115,8 @@ function App() {
               <OpeningsList 
                 side="white" 
                 openings={openings} 
-                onOpeningClick={handleOpeningClick} 
+                onVariationClick={handleVariationClick}
+                onAddVariation={(op) => openAddModal(op)}
               />
             </div>
             <div className="flex-1 bg-black-side/20 p-6 rounded-xl border border-black-side">
@@ -116,7 +124,8 @@ function App() {
               <OpeningsList 
                 side="black" 
                 openings={openings} 
-                onOpeningClick={handleOpeningClick} 
+                onVariationClick={handleVariationClick}
+                onAddVariation={(op) => openAddModal(op)}
               />
             </div>
           </div>
@@ -129,22 +138,25 @@ function App() {
                <OpeningsList 
                  side={activeSide} 
                  openings={openings} 
-                 onOpeningClick={handleOpeningClick} 
+                 onVariationClick={handleVariationClick}
+                 onAddVariation={(op) => openAddModal(op)}
                />
              </div>
           </div>
         )}
       </main>
 
-      {/* --- Modal for Adding Opening --- */}
+      {/* --- Modal for Adding Opening/Variation --- */}
       <Modal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        title="Add New Opening"
+        title={editingOpening ? `Add Variation to ${editingOpening.name}` : "Add New Opening"}
       >
         <AddOpeningForm 
           onSuccess={handleAddSuccess} 
           onCancel={() => setIsModalOpen(false)} 
+          initialOpeningName={editingOpening?.name}
+          initialSide={editingOpening?.side}
         />
       </Modal>
 
@@ -152,9 +164,14 @@ function App() {
       <Modal
         isOpen={isDetailsOpen}
         onClose={() => setIsDetailsOpen(false)}
-        title={selectedOpening?.name || 'Opening Details'}
+        title={selectedVariation?.name || 'Details'}
       >
-        {selectedOpening && <OpeningDetails opening={selectedOpening} />}
+        {selectedVariation && (
+            <OpeningDetails 
+                openingName={selectedVariation.name} 
+                variation={selectedVariation.data} 
+            />
+        )}
       </Modal>
 
     </div>

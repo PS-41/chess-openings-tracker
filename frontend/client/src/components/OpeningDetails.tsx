@@ -1,23 +1,31 @@
 import React, { useState } from 'react';
-import { type Opening } from './OpeningsList';
+import { type Variation } from './OpeningsList';
 
 interface OpeningDetailsProps {
-  opening: Opening;
+  openingName: string;
+  variation: Variation;
 }
 
-const OpeningDetails: React.FC<OpeningDetailsProps> = ({ opening }) => {
+const OpeningDetails: React.FC<OpeningDetailsProps> = ({ openingName, variation }) => {
   const [isZoomed, setIsZoomed] = useState(false);
 
   // Helper to get image URL
-  const imageUrl = opening.image_filename 
-    ? `http://127.0.0.1:5000/api/uploads/${opening.image_filename}` 
+  const imageUrl = variation.image_filename 
+    ? `http://127.0.0.1:5000/api/uploads/${variation.image_filename}` 
     : null;
 
   return (
     <>
       <div className="space-y-6">
         
-        {/* Top Section: Image & Moves */}
+        {/* Header for variation name if not default */}
+        {variation.name !== 'Default' && (
+             <div className="pb-2 border-b border-gray-100">
+                <span className="text-gray-500 text-sm font-semibold uppercase tracking-wide">Variation: </span>
+                <span className="text-xl font-bold text-gray-800">{variation.name}</span>
+             </div>
+        )}
+
         <div className="flex flex-col md:flex-row gap-6">
           
           {/* Image Column */}
@@ -30,10 +38,9 @@ const OpeningDetails: React.FC<OpeningDetailsProps> = ({ opening }) => {
               >
                 <img 
                   src={imageUrl} 
-                  alt={opening.name} 
+                  alt={variation.name} 
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
-                {/* Hover overlay hint */}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                     <span className="opacity-0 group-hover:opacity-100 text-white font-bold bg-black/50 px-2 py-1 rounded text-sm">
                         🔍 View Full
@@ -42,56 +49,51 @@ const OpeningDetails: React.FC<OpeningDetailsProps> = ({ opening }) => {
               </div>
             </div>
           ) : (
-             /* Fallback placeholder */
              <div className="w-full md:w-1/3 bg-gray-50 rounded-lg flex items-center justify-center border border-dashed border-gray-300 min-h-[150px]">
                <span className="text-gray-400 text-sm">No image available</span>
              </div>
           )}
 
           {/* Moves & Actions Column */}
-          <div className="flex-1 space-y-4 min-w-0"> {/* min-w-0 prevents flex items from overflowing */}
+          <div className="flex-1 space-y-4 min-w-0">
              <div>
                <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Moves (PGN)</h4>
-               
-               {/* SCROLLABLE PGN BOX */}
-               {/* max-h-32 limits height to ~8rem, overflow-y-auto enables scrolling */}
                <div className="bg-gray-800 text-gray-100 p-3 rounded-lg font-mono text-sm leading-relaxed shadow-inner max-h-32 overflow-y-auto border border-gray-700">
-                 {opening.moves}
+                 {variation.moves}
                </div>
              </div>
 
-             {/* Lichess Action Button */}
              <a 
-               href={opening.lichess_link} 
+               href={variation.lichess_link} 
                target="_blank" 
                rel="noopener noreferrer"
                className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition hover:-translate-y-0.5"
              >
-               Analyze on Lichess ⬈
+               Analyze on Lichess ↗
              </a>
           </div>
         </div>
 
-        {/* --- NOTES SECTION (New) --- */}
-        {opening.notes && (
+        {/* --- NOTES SECTION --- */}
+        {variation.notes && (
           <div className="border-t pt-4 border-gray-100">
             <h4 className="text-lg font-bold text-gray-800 mb-2 flex items-center">
               <span>📝 My Notes</span>
             </h4>
             <div className="bg-yellow-50 text-gray-800 p-4 rounded-lg shadow-sm border border-yellow-100 text-sm leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
-              {opening.notes}
+              {variation.notes}
             </div>
           </div>
         )}
 
         {/* Tutorial Links Section */}
-        {opening.tutorials && opening.tutorials.length > 0 && (
+        {variation.tutorials && variation.tutorials.length > 0 && (
           <div className="border-t pt-4 border-gray-100">
              <h4 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
                <span>📚 Tutorial Resources</span>
              </h4>
              <ul className="space-y-2">
-               {opening.tutorials.map((link, idx) => (
+               {variation.tutorials.map((link, idx) => (
                  <li key={idx}>
                    <a 
                      href={link} 
@@ -113,7 +115,7 @@ const OpeningDetails: React.FC<OpeningDetailsProps> = ({ opening }) => {
         )}
       </div>
 
-      {/* --- LIGHTBOX (Full Screen Image Overlay) --- */}
+      {/* --- LIGHTBOX --- */}
       {isZoomed && imageUrl && (
         <div 
             className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out animate-fade-in"
@@ -121,7 +123,7 @@ const OpeningDetails: React.FC<OpeningDetailsProps> = ({ opening }) => {
         >
             <img 
                 src={imageUrl} 
-                alt={opening.name} 
+                alt={variation.name} 
                 className="max-w-full max-h-full object-contain rounded-md shadow-2xl"
             />
             <button className="absolute top-4 right-4 text-white text-4xl opacity-70 hover:opacity-100">

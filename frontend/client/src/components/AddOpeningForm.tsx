@@ -1,32 +1,46 @@
-import React, { useState, useRef, ClipboardEvent } from 'react';
+import React, { useState, useRef, ClipboardEvent, useEffect } from 'react';
 import axios from 'axios';
 
 interface AddOpeningFormProps {
   onSuccess: () => void;
   onCancel: () => void;
+  // Optional props for "Add Variation" mode
+  initialOpeningName?: string;
+  initialSide?: 'white' | 'black';
 }
 
-const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) => {
+const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ 
+  onSuccess, 
+  onCancel, 
+  initialOpeningName, 
+  initialSide 
+}) => {
   const [name, setName] = useState('');
   const [side, setSide] = useState<'white' | 'black'>('white');
-  const [moves, setMoves] = useState('');
   
-  // Image State
+  // New: Variation Name
+  const [variationName, setVariationName] = useState('');
+
+  const [moves, setMoves] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  // Tutorial Links State
-  const [tutorialLinks, setTutorialLinks] = useState<string[]>(['']); // Start with one empty input
-
+  const [tutorialLinks, setTutorialLinks] = useState<string[]>(['']); 
   const [notes, setNotes] = useState('');
-
   const [loading, setLoading] = useState(false);
-
-  // Error State
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Ref for scrolling to top
   const formTopRef = useRef<HTMLDivElement>(null);
+
+  // Initialize form if props passed (Add Variation Mode)
+  useEffect(() => {
+    if (initialOpeningName) {
+      setName(initialOpeningName);
+    }
+    if (initialSide) {
+      setSide(initialSide);
+    }
+  }, [initialOpeningName, initialSide]);
 
   // --- Handle Paste for Image ---
   const handlePaste = (e: ClipboardEvent<HTMLDivElement>) => {
@@ -72,19 +86,19 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
     if (!moves) return alert("Moves are required!");
 
     setLoading(true);
-    setErrorMessage(null); // Clear previous errors
+    setErrorMessage(null);
 
     const formData = new FormData();
     formData.append('name', name);
     formData.append('side', side);
     formData.append('moves', moves);
     formData.append('notes', notes);
-    
+    formData.append('variation_name', variationName); // Send variation name
+
     if (imageFile) {
       formData.append('image', imageFile);
     }
 
-    // Append each non-empty tutorial link
     tutorialLinks.forEach((link) => {
       if (link.trim()) formData.append('tutorials', link);
     });
@@ -96,8 +110,6 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
       onSuccess();
     } catch (error: any) {
       console.error("Error adding opening:", error);
-
-      // Elegantly handle the specific error message from backend
       if (error.response && error.response.data && error.response.data.error) {
         setErrorMessage(error.response.data.error);
       } else {
@@ -112,15 +124,12 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
     }
   };
 
-  return (
-    // REMOVED: max-h-[80vh] and overflow-y-auto to fix double scrollbars
-    // The Modal component already handles scrolling.
-    <form onSubmit={handleSubmit} className="space-y-4 px-1">
+  const isLocked = !!initialOpeningName; // Are we in "Add Variation" mode?
 
-      {/* Invisible anchor for scrolling */}
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 px-1">
       <div ref={formTopRef} />
 
-      {/* Error Banner Display */}
       {errorMessage && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded text-sm mb-4 animate-pulse">
           <p className="font-bold">Error</p>
@@ -128,35 +137,61 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
         </div>
       )}
 
-      {/* Name */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Opening Name *</label>
-        <input 
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className={`w-full p-2 border rounded-lg focus:ring-2 outline-none ${
-            errorMessage?.includes('name')
-              ? 'border-red-500 focus:ring-red-200'
-              : 'border-gray-300 focus:ring-blue-500'
-          }`}
-          placeholder="e.g. Sicilian Defense" 
-        />
+      {/* Row: Name and Variation */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Opening Name *</label>
+          <input 
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={isLocked}
+            className={`w-full p-2 border rounded-lg outline-none ${
+              isLocked ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 border-gray-300'
+            }`}
+            placeholder="e.g. Sicilian Defense" 
+          />
+        </div>
+
+        {/* Variation Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Variation Name</label>
+          <input 
+            value={variationName}
+            onChange={(e) => setVariationName(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="Default" 
+          />
+        </div>
       </div>
 
       {/* Side */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Side *</label>
         <div className="flex space-x-4">
-          <label className="flex items-center space-x-2 cursor-pointer bg-gray-50 px-3 py-1 rounded border">
-            <input type="radio" name="side" checked={side === 'white'} onChange={() => setSide('white')} />
+          <label className={`flex items-center space-x-2 px-3 py-1 rounded border ${isLocked ? 'opacity-70' : 'cursor-pointer bg-gray-50'}`}>
+            <input 
+                type="radio" 
+                name="side" 
+                checked={side === 'white'} 
+                onChange={() => setSide('white')} 
+                disabled={isLocked}
+            />
             <span>White</span>
           </label>
-          <label className="flex items-center space-x-2 cursor-pointer bg-gray-50 px-3 py-1 rounded border">
-            <input type="radio" name="side" checked={side === 'black'} onChange={() => setSide('black')} />
+          <label className={`flex items-center space-x-2 px-3 py-1 rounded border ${isLocked ? 'opacity-70' : 'cursor-pointer bg-gray-50'}`}>
+            <input 
+                type="radio" 
+                name="side" 
+                checked={side === 'black'} 
+                onChange={() => setSide('black')} 
+                disabled={isLocked}
+            />
             <span>Black</span>
           </label>
         </div>
+        {isLocked && <p className="text-xs text-gray-400 mt-1">Side is fixed for existing openings.</p>}
       </div>
 
       {/* Moves (Required) */}
@@ -167,17 +202,12 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
           rows={3}
           value={moves}
           onChange={(e) => setMoves(e.target.value)}
-          className={`w-full p-2 border rounded-lg focus:ring-2 outline-none font-mono text-sm ${
-            errorMessage?.includes('PGN')
-              ? 'border-red-500 focus:ring-red-200'
-              : 'border-gray-300 focus:ring-blue-500'
-          }`}
+          className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
           placeholder="e.g. 1. e4 c5 2. Nf3 d6" 
         />
-        <p className="text-xs text-gray-500 mt-1">Lichess link will be auto-generated from this.</p>
       </div>
 
-      {/* --- NOTES SECTION --- */}
+      {/* Personal Notes Section */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Personal Notes (Optional)</label>
         <textarea 
@@ -210,7 +240,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
             ) : (
                 <div className="relative">
                     <p className="text-sm text-gray-500 pointer-events-none">
-                        Click to upload or <strong>Ctrl+V</strong> to paste image here
+                        Click to upload or <strong>Ctrl+V</strong> to paste
                     </p>
                     <input 
                         type="file" 
@@ -223,7 +253,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ onSuccess, onCancel }) 
         </div>
       </div>
 
-      {/* Tutorial Links (Dynamic) */}
+      {/* Tutorial Links */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Tutorial Links (Optional)</label>
         <div className="space-y-2">
