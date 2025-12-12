@@ -1,19 +1,25 @@
 import React, { useState, useRef, ClipboardEvent, useEffect } from 'react';
 import axios from 'axios';
+import { type Variation } from './OpeningsList';
 
 interface AddOpeningFormProps {
   onSuccess: () => void;
   onCancel: () => void;
   initialOpeningName?: string;
   initialSide?: 'white' | 'black';
+  initialVariationData?: Variation; // If provided, we are in Edit Mode
 }
 
 const AddOpeningForm: React.FC<AddOpeningFormProps> = ({ 
   onSuccess, 
   onCancel, 
   initialOpeningName, 
-  initialSide 
+  initialSide,
+  initialVariationData
 }) => {
+  const isEditMode = !!initialVariationData;
+  const isLocked = !!initialOpeningName; // Opening Name/Side is locked when adding variation or editing variation
+
   const [name, setName] = useState('');
   const [side, setSide] = useState<'white' | 'black'>('white');
   const [variationName, setVariationName] = useState('');
@@ -30,7 +36,19 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
   useEffect(() => {
     if (initialOpeningName) setName(initialOpeningName);
     if (initialSide) setSide(initialSide);
-  }, [initialOpeningName, initialSide]);
+
+    if (initialVariationData) {
+      setVariationName(initialVariationData.name === 'Default' ? '' : initialVariationData.name);
+      setMoves(initialVariationData.moves);
+      setNotes(initialVariationData.notes || '');
+      if (initialVariationData.tutorials && initialVariationData.tutorials.length > 0) {
+        setTutorialLinks(initialVariationData.tutorials);
+      }
+      if (initialVariationData.image_filename) {
+        setPreviewUrl(`http://127.0.0.1:5000/api/uploads/${initialVariationData.image_filename}`);
+      }
+    }
+  }, [initialOpeningName, initialSide, initialVariationData]);
 
   const handlePaste = (e: ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData.items;
@@ -76,11 +94,16 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
     setErrorMessage(null);
 
     const formData = new FormData();
-    formData.append('name', name);
-    formData.append('side', side);
+    // Only send Opening Name/Side if CREATING new opening (not locked)
+    if (!isLocked) {
+        formData.append('name', name);
+        formData.append('side', side);
+    }
+    
+    // Always send these
     formData.append('moves', moves);
     formData.append('notes', notes);
-    formData.append('variation_name', variationName);
+    formData.append('variation_name', variationName || 'Default');
 
     if (imageFile) formData.append('image', imageFile);
 
@@ -89,16 +112,29 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
     });
 
     try {
-      await axios.post('http://127.0.0.1:5000/api/openings', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      if (isEditMode && initialVariationData) {
+        // PUT Request
+        await axios.put(`http://127.0.0.1:5000/api/variations/${initialVariationData.id}`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } else {
+        // POST Request
+        if (isLocked) {
+            formData.append('name', name);
+            formData.append('side', side);
+        }
+        
+        await axios.post('http://127.0.0.1:5000/api/openings', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
       onSuccess();
     } catch (error: any) {
-      console.error("Error adding opening:", error);
+      console.error("Error saving opening:", error);
       if (error.response && error.response.data && error.response.data.error) {
         setErrorMessage(error.response.data.error);
       } else {
-        setErrorMessage("Failed to add opening. Please try again.");
+        setErrorMessage("Failed to save. Please try again.");
       }
       if (formTopRef.current) {
         formTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -108,15 +144,13 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
     }
   };
 
-  const isLocked = !!initialOpeningName;
-
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div ref={formTopRef} />
 
       {errorMessage && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg text-sm mb-4">
-          <p className="font-bold">Error saving opening</p>
+          <p className="font-bold">Error saving</p>
           <p>{errorMessage}</p>
         </div>
       )}
@@ -124,7 +158,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
       {/* Row: Name and Variation */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Opening Name *</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Opening Name</label>
           <input 
             required
             value={name}
@@ -153,7 +187,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
 
       {/* Side */}
       <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">Playing Side *</label>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Playing Side</label>
         <div className="flex gap-4">
           <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
             side === 'white' 
@@ -232,6 +266,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
                     >
                         ✕
                     </button>
+                    {!imageFile && isEditMode && <p className="text-xs text-gray-400 mt-2">Current Image</p>}
                 </div>
             ) : (
                 <div className="relative flex flex-col items-center gap-2">
@@ -299,7 +334,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
           disabled={loading}
           className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 shadow-md font-medium transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
         >
-          {loading ? 'Saving...' : 'Save Opening'}
+          {loading ? 'Saving...' : (isEditMode ? 'Update Variation' : 'Save Opening')}
         </button>
       </div>
     </form>

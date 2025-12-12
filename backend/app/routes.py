@@ -12,6 +12,16 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Helper to delete image file
+def remove_variation_image(variation):
+    if variation.image_filename:
+        file_path = os.path.join(current_app.root_path, '..', 'uploads', variation.image_filename)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"Error deleting file {file_path}: {e}")
+
 # --- GET: Fetch all openings ---
 @api.route('/openings', methods=['GET'])
 def get_openings():
@@ -52,15 +62,10 @@ def add_opening():
         db.session.add(opening)
         db.session.commit() # Commit to generate ID
 
-    # Check globally for duplicate PGN (optional, keeping consistent with previous logic)
-    # Note: Previous logic checked global PGN uniqueness. 
-    # If you want to allow same moves in different variations (e.g. transpositions), you might remove this.
-    # We will keep it but maybe check against Variation table now.
-    existing_pgn = Variation.query.filter_by(moves=moves).first()
+    # Check for duplicate PGN within the opening
+    existing_pgn = Variation.query.filter_by(opening_id=opening.id, moves=moves).first()
     if existing_pgn:
-        # Fetch parent name for error message
-        parent = Opening.query.get(existing_pgn.opening_id)
-        return jsonify({'error': f"This moves sequence already exists in '{parent.name}' ({existing_pgn.name})"}), 409
+        return jsonify({'error': f"This moves sequence already exists in '{opening.name}' ({existing_pgn.name})"}), 409
 
     # 3. Generate Lichess Link
     encoded_pgn = urllib.parse.quote(moves)
@@ -103,20 +108,132 @@ def add_opening():
 
     return jsonify(opening.to_dict()), 201
 
-# --- DELETE: Remove an opening or variation? ---
-# Current logic deletes entire opening. We might want to delete specific variation.
-# For simplicity, let's keep it deleting the whole opening by ID, 
-# or add a new route for deleting variation.
-# Let's assume the frontend passes the Opening ID to delete the whole thing for now, 
-# OR we update this to delete variations if we want granular control.
-# Given the prompt, I'll stick to basic cleanup. 
-# If 'id' refers to Opening ID, it cascades deletes variations.
+# --- PUT: Update Opening Name ---
+@api.route('/openings/<int:id>', methods=['PUT'])
+def update_opening(id):
+    opening = Opening.query.get_or_404(id)
+    data = request.get_json()
+    new_name = data.get('name')
+    
+    if not new_name:
+        return jsonify({'error': 'Name is required'}), 400
+        
+    # Check for duplicate name
+    existing = Opening.query.filter_by(name=new_name).first()
+    if existing and existing.id != id:
+        return jsonify({'error': 'Opening with this name already exists'}), 409
+
+    opening.name = new_name
+    db.session.commit()
+    return jsonify(opening.to_dict())
+
+# --- PUT: Update Variation ---
+@api.route('/variations/<int:id>', methods=['PUT'])
+def update_variation(id):
+    variation = Variation.query.get_or_404(id)
+    
+    # Form data
+    variation_name = request.form.get('variation_name')
+    moves = request.form.get('moves')
+    notes = request.form.get('notes')
+    tutorial_links = request.form.getlist('tutorials')
+    
+    if not moves:
+        return jsonify({'error': 'Moves are required'}), 400
+
+    # Update basics
+    if variation_name:
+        variation.name = variation_name
+    
+    variation.moves = moves
+    variation.notes = notes
+    
+    # Update Lichess Link
+    encoded_pgn = urllib.parse.quote(moves)
+    variation.lichess_link = f"https://lichess.org/analysis/pgn/{encoded_pgn}"
+
+    # Handle Image (Replace if new one uploaded)
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
+            os.makedirs(upload_folder, exist_ok=True)
+            remove_variation_image(variation)
+            opening_name = variation.opening.name
+            side = variation.opening.side
+            
+            # Construct name: 'Opening_Variation_Side_filename'
+            # Note: variation.name is used because it was updated in the lines above if a new name was provided
+            save_name = f"{secure_filename(opening_name)}_{secure_filename(variation.name)}_{side}_{filename}"            
+            file.save(os.path.join(upload_folder, save_name))
+            
+            variation.image_filename = save_name
+
+    # Handle Tutorials (Replace all)
+    # First, delete existing
+    TutorialLink.query.filter_by(variation_id=variation.id).delete()
+    # Add new
+    for url in tutorial_links:
+        if url.strip():
+            link = TutorialLink(url=url.strip(), variation_id=variation.id)
+            db.session.add(link)
+
+    db.session.commit()
+    
+    # Return the parent opening to refresh state easily
+    return jsonify(variation.opening.to_dict())
+
+# --- DELETE: Delete Opening ---
 @api.route('/openings/<int:id>', methods=['DELETE'])
 def delete_opening(id):
     opening = Opening.query.get_or_404(id)
+    # Delete images for all variations in this opening
+    for variation in opening.variations:
+        remove_variation_image(variation)        
     db.session.delete(opening)
     db.session.commit()
-    return jsonify({'message': 'Opening deleted successfully'})
+    return jsonify({'message': 'Opening and associated images deleted successfully'})
+
+# --- DELETE: Delete Variation ---
+@api.route('/variations/<int:id>', methods=['DELETE'])
+def delete_variation(id):
+    variation = Variation.query.get_or_404(id)    
+    # Delete the image associated with this variation
+    remove_variation_image(variation)
+    db.session.delete(variation)
+    db.session.commit()
+    return jsonify({'message': 'Variation and image deleted successfully'})
+
+# --- POST: Batch Delete ---
+@api.route('/batch-delete', methods=['POST'])
+def batch_delete():
+    data = request.get_json()
+    opening_ids = data.get('openings', [])
+    variation_ids = data.get('variations', [])
+
+    try:
+        # 1. Handle explicit variations deletion
+        if variation_ids:
+            variations_to_delete = Variation.query.filter(Variation.id.in_(variation_ids)).all()
+            for v in variations_to_delete:
+                remove_variation_image(v)
+                db.session.delete(v)
+        
+        # 2. Handle openings deletion (and their sub-variations)
+        if opening_ids:
+            openings_to_delete = Opening.query.filter(Opening.id.in_(opening_ids)).all()
+            for op in openings_to_delete:
+                # Manually clean up images for variations of these openings
+                for v in op.variations:
+                    remove_variation_image(v)
+                db.session.delete(op)
+            
+        db.session.commit()
+        return jsonify({'message': 'Batch delete successful'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 # --- SERVE IMAGES ---
 @api.route('/uploads/<filename>')
