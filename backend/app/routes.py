@@ -1,6 +1,7 @@
 import os
 import shutil
 import urllib.parse
+import uuid
 from flask import Blueprint, request, jsonify, current_app, send_from_directory, session
 from flask_login import current_user
 from werkzeug.utils import secure_filename
@@ -71,6 +72,7 @@ def import_openings():
     
     count = 0
     upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
+    os.makedirs(upload_folder, exist_ok=True)
 
     for pub_op in public_openings:
         # Create Opening Copy
@@ -93,7 +95,10 @@ def import_openings():
             if pub_var.image_filename:
                 # Generate new unique name for the user's copy
                 ext = pub_var.image_filename.split('.')[-1]
-                new_image_filename = f"user_{current_user.id}_{secure_filename(pub_var.name)}_{secure_filename(pub_op.name)}.{ext}"
+                unique_name = f"img_{uuid.uuid4().hex}.{ext}"
+                # Use same 'u' prefix convention as regular uploads
+                new_image_filename = f"u{current_user.id}_{unique_name}"
+                
                 src_path = os.path.join(upload_folder, pub_var.image_filename)
                 dst_path = os.path.join(upload_folder, new_image_filename)
                 
@@ -141,12 +146,11 @@ def add_opening():
         return jsonify({'error': 'Name, Side, and Moves are required'}), 400
 
     # Logic to find or create Parent Opening FOR THIS USER context
-    opening = Opening.query.filter_by(name=name, user_id=owner_id).first()
+    # Improved: Filter by side as well to allow same opening name for different sides
+    opening = Opening.query.filter_by(name=name, side=side, user_id=owner_id).first()
 
     if opening:
-        if opening.side != side:
-            return jsonify({'error': f"Opening '{name}' already exists as {opening.side}."}), 409
-        
+        # Opening exists, check for duplicate variation/moves
         existing_variation = Variation.query.filter_by(opening_id=opening.id, name=variation_name).first()
         if existing_variation:
             return jsonify({'error': f"Variation '{variation_name}' already exists."}), 409
@@ -166,12 +170,14 @@ def add_opening():
     if 'image' in request.files:
         file = request.files['image']
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            ext = file.filename.rsplit('.', 1)[1].lower()
+            unique_name = f"img_{uuid.uuid4().hex}.{ext}"
+            
             upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
             os.makedirs(upload_folder, exist_ok=True)
             # Add user_id prefix to filename to avoid collisions between users
             prefix = f"u{owner_id}_" if owner_id else "public_"
-            save_name = f"{prefix}{secure_filename(name)}_{secure_filename(variation_name)}_{side}_{filename}"
+            save_name = f"{prefix}{unique_name}"
             file.save(os.path.join(upload_folder, save_name))
             image_filename = save_name
 
@@ -206,9 +212,9 @@ def update_opening(id):
     new_name = data.get('name')
     if not new_name: return jsonify({'error': 'Name is required'}), 400
     
-    # Check duplicate name for THIS user
+    # Check duplicate name for THIS user, respecting the side
     owner_id = opening.user_id
-    existing = Opening.query.filter_by(name=new_name, user_id=owner_id).first()
+    existing = Opening.query.filter_by(name=new_name, side=opening.side, user_id=owner_id).first()
     if existing and existing.id != id:
         return jsonify({'error': 'Opening with this name already exists'}), 409
 
@@ -223,12 +229,11 @@ def update_variation(id):
     if not has_edit_permission(variation.opening):
         return jsonify({'error': 'Permission denied'}), 403
     
-    # ... (Rest of logic remains largely same, just checking perms) ...
-    # Standard update logic from before (re-paste essential parts)
     variation_name = request.form.get('variation_name')
     moves = request.form.get('moves')
     notes = request.form.get('notes')
     tutorial_links = request.form.getlist('tutorials')
+    delete_image_flag = request.form.get('delete_image') == 'true'
     
     if not moves: return jsonify({'error': 'Moves are required'}), 400
 
@@ -246,21 +251,27 @@ def update_variation(id):
     encoded_pgn = urllib.parse.quote(moves)
     variation.lichess_link = f"https://lichess.org/analysis/pgn/{encoded_pgn}"
 
+    upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
+
     if 'image' in request.files:
         file = request.files['image']
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
-            os.makedirs(upload_folder, exist_ok=True)
             remove_variation_image(variation)
+            
+            ext = file.filename.rsplit('.', 1)[1].lower()
+            unique_name = f"img_{uuid.uuid4().hex}.{ext}"
+            
+            os.makedirs(upload_folder, exist_ok=True)
             
             owner_id = variation.opening.user_id
             prefix = f"u{owner_id}_" if owner_id else "public_"
             
-            side = variation.opening.side
-            save_name = f"{prefix}{secure_filename(variation.opening.name)}_{secure_filename(variation.name)}_{side}_{filename}"
+            save_name = f"{prefix}{unique_name}"
             file.save(os.path.join(upload_folder, save_name))
             variation.image_filename = save_name
+    elif delete_image_flag:
+        remove_variation_image(variation)
+        variation.image_filename = None
 
     TutorialLink.query.filter_by(variation_id=variation.id).delete()
     for url in tutorial_links:

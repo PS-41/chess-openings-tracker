@@ -31,10 +31,17 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isImageDeleted, setIsImageDeleted] = useState(false);
 
   const formTopRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Reset state when opening/variation changes to avoid stale data
+    setImageFile(null);
+    setPreviewUrl(null);
+    setIsImageDeleted(false);
+
     if (initialOpeningName) setName(initialOpeningName);
     if (initialSide) setSide(initialSide);
 
@@ -42,12 +49,24 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
       setVariationName(initialVariationData.name === 'Default' ? '' : initialVariationData.name);
       setMoves(initialVariationData.moves);
       setNotes(initialVariationData.notes || '');
-      if (initialVariationData.tutorials && initialVariationData.tutorials.length > 0) {
-        setTutorialLinks(initialVariationData.tutorials);
-      }
+      
+      setTutorialLinks(
+        initialVariationData.tutorials && initialVariationData.tutorials.length > 0
+          ? initialVariationData.tutorials
+          : ['']
+      );
+
       if (initialVariationData.image_filename) {
         setPreviewUrl(`/api/uploads/${initialVariationData.image_filename}`);
+        setIsImageDeleted(false);
       }
+    } else {
+        // Reset non-variation specific fields if adding new opening/variation
+        if (!initialOpeningName) setName('');
+        setVariationName('');
+        setMoves('');
+        setNotes('');
+        setTutorialLinks(['']);
     }
   }, [initialOpeningName, initialSide, initialVariationData]);
 
@@ -59,6 +78,8 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
         if (blob) {
           setImageFile(blob);
           setPreviewUrl(URL.createObjectURL(blob));
+          setIsImageDeleted(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
         }
       }
     }
@@ -69,6 +90,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
       const file = e.target.files[0];
       setImageFile(file);
       setPreviewUrl(URL.createObjectURL(file));
+      setIsImageDeleted(false);
     }
   };
 
@@ -105,6 +127,10 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
     formData.append('moves', moves);
     formData.append('notes', notes);
     formData.append('variation_name', variationName || 'Default');
+
+    if (isImageDeleted) {
+        formData.append('delete_image', 'true');
+    }
 
     if (imageFile) formData.append('image', imageFile);
 
@@ -264,12 +290,19 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
                     <img src={previewUrl} alt="Preview" className="h-32 rounded-lg shadow-sm border border-gray-200" />
                     <button 
                         type="button" 
-                        onClick={() => { setImageFile(null); setPreviewUrl(null); }}
+                        onClick={() => { 
+                            setImageFile(null); 
+                            setPreviewUrl(null);
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                            if (isEditMode && initialVariationData?.image_filename) {
+                                setIsImageDeleted(true);
+                            }
+                        }}
                         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md hover:bg-red-600"
                     >
                         ✕
                     </button>
-                    {!imageFile && isEditMode && <p className="text-xs text-gray-400 mt-2">Current Image</p>}
+                    {!imageFile && isEditMode && !isImageDeleted && <p className="text-xs text-gray-400 mt-2">Current Image</p>}
                 </div>
             ) : (
                 <div className="relative flex flex-col items-center gap-2">
@@ -282,6 +315,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
                     <input 
                         type="file" 
                         accept="image/*"
+                        ref={fileInputRef}
                         onChange={handleFileChange}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
