@@ -21,7 +21,11 @@ const EditOpeningNameForm: React.FC<EditOpeningNameFormProps> = ({ openingId, cu
         setError(null);
 
         try {
-            await axios.put(`http://127.0.0.1:5000/api/openings/${openingId}`, { name });
+            await axios.put(
+                `/api/openings/${openingId}`,
+                { name },
+                { withCredentials: true }
+                );
             onSuccess();
         } catch (err: any) {
             setError(err.response?.data?.error || "Failed to update name");

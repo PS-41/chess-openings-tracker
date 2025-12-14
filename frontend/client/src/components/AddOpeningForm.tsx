@@ -1,4 +1,5 @@
-import React, { useState, useRef, ClipboardEvent, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import type { ClipboardEvent } from 'react';
 import axios from 'axios';
 import { type Variation } from './OpeningsList';
 
@@ -45,7 +46,7 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
         setTutorialLinks(initialVariationData.tutorials);
       }
       if (initialVariationData.image_filename) {
-        setPreviewUrl(`http://127.0.0.1:5000/api/uploads/${initialVariationData.image_filename}`);
+        setPreviewUrl(`/api/uploads/${initialVariationData.image_filename}`);
       }
     }
   }, [initialOpeningName, initialSide, initialVariationData]);
@@ -114,8 +115,9 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
     try {
       if (isEditMode && initialVariationData) {
         // PUT Request
-        await axios.put(`http://127.0.0.1:5000/api/variations/${initialVariationData.id}`, formData, {
+        await axios.put(`/api/variations/${initialVariationData.id}`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
+            withCredentials: true,
         });
       } else {
         // POST Request
@@ -124,8 +126,9 @@ const AddOpeningForm: React.FC<AddOpeningFormProps> = ({
             formData.append('side', side);
         }
         
-        await axios.post('http://127.0.0.1:5000/api/openings', formData, {
+        await axios.post('/api/openings', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
+          withCredentials: true,
         });
       }
       onSuccess();

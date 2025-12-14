@@ -1,77 +1,167 @@
 import os
+import shutil
 import urllib.parse
-from flask import Blueprint, request, jsonify, current_app, send_from_directory
+from flask import Blueprint, request, jsonify, current_app, send_from_directory, session
+from flask_login import current_user
 from werkzeug.utils import secure_filename
 from .models import Opening, Variation, TutorialLink, db
 
 api = Blueprint('api', __name__)
-
-# Allowed image extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Helper to delete image file
-def remove_variation_image(variation):
-    if variation.image_filename:
-        file_path = os.path.join(current_app.root_path, '..', 'uploads', variation.image_filename)
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                print(f"Error deleting file {file_path}: {e}")
+def has_edit_permission(opening=None):
+    """
+    Check if the requester can edit this resource.
+    1. Logged in user owns it.
+    2. It's public (user_id is None) AND session has 'is_admin_mode'.
+    """
+    if opening:
+        # Resource exists check
+        if opening.user_id is None:
+            # Public resource
+            return session.get('is_admin_mode', False)
+        else:
+            # Private resource
+            return current_user.is_authenticated and opening.user_id == current_user.id
+    else:
+        # Creating new resource check
+        if current_user.is_authenticated:
+            return True # Users can always create
+        return session.get('is_admin_mode', False) # Guests need admin mode
 
-# --- GET: Fetch all openings ---
+def remove_variation_image(variation):
+    # Only delete file if no other variation uses it (simple check)
+    if variation.image_filename:
+        # Check if any other variation uses this file
+        count = Variation.query.filter_by(image_filename=variation.image_filename).count()
+        if count <= 1:
+            file_path = os.path.join(current_app.root_path, '..', 'uploads', variation.image_filename)
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    print(f"Error deleting file {file_path}: {e}")
+
+# --- GET: Fetch openings (Public vs Private) ---
 @api.route('/openings', methods=['GET'])
 def get_openings():
-    openings = Opening.query.all()
+    mode = request.args.get('mode', 'public') # 'public' or 'private'
+    
+    if mode == 'private' and current_user.is_authenticated:
+        openings = Opening.query.filter_by(user_id=current_user.id).all()
+    else:
+        # Guest mode / Public view
+        openings = Opening.query.filter_by(user_id=None).all()
+        
     return jsonify([o.to_dict() for o in openings])
 
-# --- POST: Add a new opening or variation ---
+# --- POST: Import Openings ---
+@api.route('/import', methods=['POST'])
+def import_openings():
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'Must be logged in to import'}), 401
+        
+    data = request.get_json()
+    opening_ids = data.get('opening_ids', []) # List of public opening IDs
+    
+    public_openings = Opening.query.filter(Opening.id.in_(opening_ids), Opening.user_id == None).all()
+    
+    count = 0
+    upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
+
+    for pub_op in public_openings:
+        # Create Opening Copy
+        existing_user_op = Opening.query.filter_by(
+            user_id=current_user.id,
+            name=pub_op.name,
+            side=pub_op.side
+        ).first()
+
+        if existing_user_op:
+            continue
+            
+        new_op = Opening(name=pub_op.name, side=pub_op.side, user_id=current_user.id)
+        db.session.add(new_op)
+        db.session.commit() # Commit to get ID
+        
+        for pub_var in pub_op.variations:
+            # Handle Image Copying (to avoid deleting shared images later)
+            new_image_filename = None
+            if pub_var.image_filename:
+                # Generate new unique name for the user's copy
+                ext = pub_var.image_filename.split('.')[-1]
+                new_image_filename = f"user_{current_user.id}_{secure_filename(pub_var.name)}_{secure_filename(pub_op.name)}.{ext}"
+                src_path = os.path.join(upload_folder, pub_var.image_filename)
+                dst_path = os.path.join(upload_folder, new_image_filename)
+                
+                if os.path.exists(src_path):
+                    shutil.copy2(src_path, dst_path)
+            
+            new_var = Variation(
+                opening_id=new_op.id,
+                name=pub_var.name,
+                moves=pub_var.moves,
+                lichess_link=pub_var.lichess_link,
+                image_filename=new_image_filename,
+                notes=pub_var.notes
+            )
+            db.session.add(new_var)
+            db.session.commit()
+            
+            # Copy Tutorials
+            for pub_tut in pub_var.tutorials:
+                new_tut = TutorialLink(url=pub_tut.url, variation_id=new_var.id)
+                db.session.add(new_tut)
+        
+        count += 1
+    
+    db.session.commit()
+    return jsonify({'message': f'Successfully imported {count} openings'})
+
+# --- POST: Add Opening ---
 @api.route('/openings', methods=['POST'])
 def add_opening():
-    # 1. Handle Text Data (Form Data)
+    if not has_edit_permission():
+        return jsonify({'error': 'Permission denied. Login or enter admin password.'}), 403
+
+    # Determine Owner: Current User OR None (Public)
+    owner_id = current_user.id if current_user.is_authenticated else None
+
     name = request.form.get('name')
     side = request.form.get('side')
     moves = request.form.get('moves')
     notes = request.form.get('notes')
     variation_name = request.form.get('variation_name') or 'Default'
-    
-    # Handle Tutorial Links
     tutorial_links = request.form.getlist('tutorials') 
 
     if not name or not side or not moves:
         return jsonify({'error': 'Name, Side, and Moves are required'}), 400
 
-    # 2. Logic to find or create Parent Opening
-    opening = Opening.query.filter_by(name=name).first()
+    # Logic to find or create Parent Opening FOR THIS USER context
+    opening = Opening.query.filter_by(name=name, user_id=owner_id).first()
 
     if opening:
-        # Check if side matches existing opening
         if opening.side != side:
-            return jsonify({'error': f"Opening '{name}' already exists as {opening.side}. You cannot add a {side} variation to it."}), 409
+            return jsonify({'error': f"Opening '{name}' already exists as {opening.side}."}), 409
         
-        # Check if Variation Name already exists for this opening
         existing_variation = Variation.query.filter_by(opening_id=opening.id, name=variation_name).first()
         if existing_variation:
-            return jsonify({'error': f"Variation '{variation_name}' already exists for opening '{name}'."}), 409
+            return jsonify({'error': f"Variation '{variation_name}' already exists."}), 409
+
+        existing_pgn = Variation.query.filter_by(opening_id=opening.id, moves=moves).first()
+        if existing_pgn:
+            return jsonify({'error': f"This moves sequence already exists in '{opening.name}' ({existing_pgn.name})"}), 409
     else:
-        # Create new Opening
-        opening = Opening(name=name, side=side)
+        opening = Opening(name=name, side=side, user_id=owner_id)
         db.session.add(opening)
-        db.session.commit() # Commit to generate ID
+        db.session.commit()
 
-    # Check for duplicate PGN within the opening
-    existing_pgn = Variation.query.filter_by(opening_id=opening.id, moves=moves).first()
-    if existing_pgn:
-        return jsonify({'error': f"This moves sequence already exists in '{opening.name}' ({existing_pgn.name})"}), 409
-
-    # 3. Generate Lichess Link
     encoded_pgn = urllib.parse.quote(moves)
     generated_lichess_link = f"https://lichess.org/analysis/pgn/{encoded_pgn}"
 
-    # 4. Handle Image Upload
     image_filename = None
     if 'image' in request.files:
         file = request.files['image']
@@ -79,13 +169,12 @@ def add_opening():
             filename = secure_filename(file.filename)
             upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
             os.makedirs(upload_folder, exist_ok=True)
-            
-            # Unique name: 'Opening_Variation_Side_filename'
-            save_name = f"{secure_filename(name)}_{secure_filename(variation_name)}_{side}_{filename}"
+            # Add user_id prefix to filename to avoid collisions between users
+            prefix = f"u{owner_id}_" if owner_id else "public_"
+            save_name = f"{prefix}{secure_filename(name)}_{secure_filename(variation_name)}_{side}_{filename}"
             file.save(os.path.join(upload_folder, save_name))
             image_filename = save_name
 
-    # 5. Create Variation
     new_variation = Variation(
         opening_id=opening.id,
         name=variation_name,
@@ -98,28 +187,28 @@ def add_opening():
     db.session.add(new_variation)
     db.session.commit()
 
-    # 6. Add Tutorial Links
     for url in tutorial_links:
         if url.strip():
             link = TutorialLink(url=url.strip(), variation_id=new_variation.id)
             db.session.add(link)
     
     db.session.commit()
-
     return jsonify(opening.to_dict()), 201
 
 # --- PUT: Update Opening Name ---
 @api.route('/openings/<int:id>', methods=['PUT'])
 def update_opening(id):
     opening = Opening.query.get_or_404(id)
+    if not has_edit_permission(opening):
+        return jsonify({'error': 'Permission denied'}), 403
+
     data = request.get_json()
     new_name = data.get('name')
+    if not new_name: return jsonify({'error': 'Name is required'}), 400
     
-    if not new_name:
-        return jsonify({'error': 'Name is required'}), 400
-        
-    # Check for duplicate name
-    existing = Opening.query.filter_by(name=new_name).first()
+    # Check duplicate name for THIS user
+    owner_id = opening.user_id
+    existing = Opening.query.filter_by(name=new_name, user_id=owner_id).first()
     if existing and existing.id != id:
         return jsonify({'error': 'Opening with this name already exists'}), 409
 
@@ -131,28 +220,32 @@ def update_opening(id):
 @api.route('/variations/<int:id>', methods=['PUT'])
 def update_variation(id):
     variation = Variation.query.get_or_404(id)
+    if not has_edit_permission(variation.opening):
+        return jsonify({'error': 'Permission denied'}), 403
     
-    # Form data
+    # ... (Rest of logic remains largely same, just checking perms) ...
+    # Standard update logic from before (re-paste essential parts)
     variation_name = request.form.get('variation_name')
     moves = request.form.get('moves')
     notes = request.form.get('notes')
     tutorial_links = request.form.getlist('tutorials')
     
-    if not moves:
-        return jsonify({'error': 'Moves are required'}), 400
+    if not moves: return jsonify({'error': 'Moves are required'}), 400
 
-    # Update basics
     if variation_name:
-        variation.name = variation_name
-    
+        existing = Variation.query.filter_by(opening_id=variation.opening_id, name=variation_name).first()
+        if existing and existing.id != variation.id:
+            return jsonify({'error': f"Variation '{variation_name}' already exists."}), 409
+    existing_pgn = Variation.query.filter_by(opening_id=variation.opening_id, moves=moves).first()
+    if existing_pgn and existing_pgn.id != variation.id:
+        return jsonify({'error': f"This moves sequence already exists in '{variation.opening.name}' ({existing_pgn.name})"}), 409
+
+    if variation_name: variation.name = variation_name
     variation.moves = moves
     variation.notes = notes
-    
-    # Update Lichess Link
     encoded_pgn = urllib.parse.quote(moves)
     variation.lichess_link = f"https://lichess.org/analysis/pgn/{encoded_pgn}"
 
-    # Handle Image (Replace if new one uploaded)
     if 'image' in request.files:
         file = request.files['image']
         if file and allowed_file(file.filename):
@@ -160,74 +253,69 @@ def update_variation(id):
             upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
             os.makedirs(upload_folder, exist_ok=True)
             remove_variation_image(variation)
-            opening_name = variation.opening.name
+            
+            owner_id = variation.opening.user_id
+            prefix = f"u{owner_id}_" if owner_id else "public_"
+            
             side = variation.opening.side
-            
-            # Construct name: 'Opening_Variation_Side_filename'
-            # Note: variation.name is used because it was updated in the lines above if a new name was provided
-            save_name = f"{secure_filename(opening_name)}_{secure_filename(variation.name)}_{side}_{filename}"            
+            save_name = f"{prefix}{secure_filename(variation.opening.name)}_{secure_filename(variation.name)}_{side}_{filename}"
             file.save(os.path.join(upload_folder, save_name))
-            
             variation.image_filename = save_name
 
-    # Handle Tutorials (Replace all)
-    # First, delete existing
     TutorialLink.query.filter_by(variation_id=variation.id).delete()
-    # Add new
     for url in tutorial_links:
         if url.strip():
-            link = TutorialLink(url=url.strip(), variation_id=variation.id)
-            db.session.add(link)
+            db.session.add(TutorialLink(url=url.strip(), variation_id=variation.id))
 
     db.session.commit()
-    
-    # Return the parent opening to refresh state easily
     return jsonify(variation.opening.to_dict())
 
-# --- DELETE: Delete Opening ---
+# --- DELETE Operations ---
 @api.route('/openings/<int:id>', methods=['DELETE'])
 def delete_opening(id):
     opening = Opening.query.get_or_404(id)
-    # Delete images for all variations in this opening
+    if not has_edit_permission(opening):
+        return jsonify({'error': 'Permission denied'}), 403
+        
     for variation in opening.variations:
         remove_variation_image(variation)        
     db.session.delete(opening)
     db.session.commit()
-    return jsonify({'message': 'Opening and associated images deleted successfully'})
+    return jsonify({'message': 'Deleted successfully'})
 
-# --- DELETE: Delete Variation ---
 @api.route('/variations/<int:id>', methods=['DELETE'])
 def delete_variation(id):
-    variation = Variation.query.get_or_404(id)    
-    # Delete the image associated with this variation
+    variation = Variation.query.get_or_404(id)
+    if not has_edit_permission(variation.opening):
+        return jsonify({'error': 'Permission denied'}), 403
+
     remove_variation_image(variation)
     db.session.delete(variation)
     db.session.commit()
-    return jsonify({'message': 'Variation and image deleted successfully'})
+    return jsonify({'message': 'Deleted successfully'})
 
-# --- POST: Batch Delete ---
 @api.route('/batch-delete', methods=['POST'])
 def batch_delete():
     data = request.get_json()
     opening_ids = data.get('openings', [])
     variation_ids = data.get('variations', [])
 
+    # Filter permissions
     try:
-        # 1. Handle explicit variations deletion
         if variation_ids:
-            variations_to_delete = Variation.query.filter(Variation.id.in_(variation_ids)).all()
-            for v in variations_to_delete:
-                remove_variation_image(v)
-                db.session.delete(v)
-        
-        # 2. Handle openings deletion (and their sub-variations)
-        if opening_ids:
-            openings_to_delete = Opening.query.filter(Opening.id.in_(opening_ids)).all()
-            for op in openings_to_delete:
-                # Manually clean up images for variations of these openings
-                for v in op.variations:
+            variations = Variation.query.filter(Variation.id.in_(variation_ids)).all()
+            for v in variations:
+                if has_edit_permission(v.opening):
                     remove_variation_image(v)
-                db.session.delete(op)
+                    db.session.delete(v)
+        
+        if opening_ids:
+            openings = Opening.query.filter(Opening.id.in_(opening_ids)).all()
+            for op in openings:
+                if has_edit_permission(op):
+                    for v in op.variations:
+                        remove_variation_image(v)
+                    db.session.delete(op)
             
         db.session.commit()
         return jsonify({'message': 'Batch delete successful'})
@@ -235,7 +323,6 @@ def batch_delete():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# --- SERVE IMAGES ---
 @api.route('/uploads/<filename>')
 def serve_image(filename):
     upload_folder = os.path.join(current_app.root_path, '..', 'uploads')

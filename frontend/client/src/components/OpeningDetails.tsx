@@ -13,7 +13,7 @@ const OpeningDetails: React.FC<OpeningDetailsProps> = ({ openingName, variation,
   const [isZoomed, setIsZoomed] = useState(false);
 
   const imageUrl = variation.image_filename 
-    ? `http://127.0.0.1:5000/api/uploads/${variation.image_filename}` 
+    ? `/api/uploads/${variation.image_filename}` 
     : null;
 
   return (

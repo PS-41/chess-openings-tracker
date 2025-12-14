@@ -41,7 +41,7 @@ function App() {
 
   const fetchOpenings = async () => {
     try {
-      const response = await axios.get('http://127.0.0.1:5000/api/openings');
+      const response = await axios.get('/api/openings');
       setOpenings(response.data);
     } catch (error) {
       console.error("Error fetching openings:", error);
@@ -116,12 +116,12 @@ function App() {
 
       try {
           if (itemsToDelete.openings.length === 1 && itemsToDelete.variations.length === 0) {
-              await axios.delete(`http://127.0.0.1:5000/api/openings/${itemsToDelete.openings[0]}`);
+              await axios.delete(`/api/openings/${itemsToDelete.openings[0]}`);
           } else if (itemsToDelete.openings.length === 0 && itemsToDelete.variations.length === 1) {
-               await axios.delete(`http://127.0.0.1:5000/api/variations/${itemsToDelete.variations[0]}`);
+               await axios.delete(`/api/variations/${itemsToDelete.variations[0]}`);
           } else {
               // Batch Delete
-              await axios.post('http://127.0.0.1:5000/api/batch-delete', itemsToDelete);
+              await axios.post('/api/batch-delete', itemsToDelete);
           }
           
           // Cleanup UI
