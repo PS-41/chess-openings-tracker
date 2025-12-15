@@ -48,6 +48,29 @@ def get_current_user():
         return jsonify({'authenticated': True, 'user': {'id': current_user.id, 'username': current_user.username}})
     return jsonify({'authenticated': False})
 
+@auth.route('/profile', methods=['PUT']) 
+@login_required
+def update_profile():
+    data = request.get_json()
+    new_username = data.get('username')
+    new_password = data.get('newPassword')
+    current_password = data.get('currentPassword')
+
+    if not current_password:
+        return jsonify({'error': 'Current password is required'}), 400
+
+    user = User.query.get(current_user.id)
+    if not user.check_password(current_password):
+        return jsonify({'error': 'Incorrect current password'}), 401
+    if new_username and new_username != user.username:
+        if User.query.filter_by(username=new_username).first():
+            return jsonify({'error': 'Username already taken'}), 409
+        user.username = new_username
+    if new_password:
+        user.set_password(new_password)
+    db.session.commit()
+    return jsonify({'message': 'Profile updated successfully', 'user': {'id': user.id, 'username': user.username}})
+
 @auth.route('/verify-admin', methods=['POST'])
 def verify_admin():
     """Verify admin password for Guest mode editing"""

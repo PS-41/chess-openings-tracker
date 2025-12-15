@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import OpeningsList, { type Opening, type Variation } from '../components/OpeningsList';
 import Modal from '../components/Modal';
 import AddOpeningForm from '../components/AddOpeningForm';
@@ -44,6 +44,16 @@ function Dashboard() {
   const [searchParams] = useSearchParams();
   const isGuestMode = searchParams.get('mode') === 'guest';
   const isSplit = viewMode === 'split';
+
+  // Handler for favoriting
+  const handleToggleFavorite = async (opening: Opening) => {
+      try {
+          await axios.post(`/api/openings/${opening.id}/favorite`, {}, { withCredentials: true });
+          setOpenings(prev => prev.map(o => o.id === opening.id ? { ...o, is_favorite: !o.is_favorite } : o));
+      } catch (e) {
+          console.error("Favorite toggle failed", e);
+      }
+  };
 
   // Check Auth & Fetch Data
   useEffect(() => {
@@ -223,6 +233,37 @@ function Dashboard() {
           <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto justify-end">
              
              {!isGuestMode && (
+                 <>
+                    <Link to="/favorites" className="text-sm font-medium text-gray-600 hover:text-amber-600 px-2 flex items-center gap-1">
+                        <span>⭐</span> Favorites
+                    </Link>
+                    <Link to="/profile" className="text-sm font-medium text-gray-600 hover:text-blue-600 px-2 flex items-center gap-1">
+                        <span>👤</span> Profile
+                    </Link>
+                    <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                 </>
+             )}
+
+             <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200 mr-2">
+                <button
+                  onClick={() => setViewMode('split')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    isSplit ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Split
+                </button>
+                <button
+                  onClick={() => setViewMode('toggle')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    !isSplit ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Single
+                </button>
+             </div>
+
+             {!isGuestMode && (
                  <button 
                     onClick={() => setIsImportModalOpen(true)}
                     className="text-sm font-medium text-gray-600 hover:text-blue-600 px-2"
@@ -305,6 +346,7 @@ function Dashboard() {
                             onDeleteOpening={requestDeleteOpening}
                             onEditVariation={openEditVariationModal}
                             onDeleteVariation={requestDeleteVariation}
+                            onToggleFavorite={!isGuestMode ? handleToggleFavorite : undefined}
                             selectionMode={isSelectionMode}
                             selectedOpenings={selectedOpeningIds}
                             selectedVariations={selectedVariationIds}

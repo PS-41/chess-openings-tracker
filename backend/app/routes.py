@@ -50,14 +50,33 @@ def remove_variation_image(variation):
 @api.route('/openings', methods=['GET'])
 def get_openings():
     mode = request.args.get('mode', 'public') # 'public' or 'private'
+    only_favorites = request.args.get('favorites') == 'true' # <--- ADDED
+    
+    query = Opening.query
     
     if mode == 'private' and current_user.is_authenticated:
-        openings = Opening.query.filter_by(user_id=current_user.id).all()
+        query = query.filter_by(user_id=current_user.id)
     else:
         # Guest mode / Public view
-        openings = Opening.query.filter_by(user_id=None).all()
+        query = query.filter_by(user_id=None)
+        
+    if only_favorites: # <--- ADDED
+        query = query.filter_by(is_favorite=True)
+
+    openings = query.all()
         
     return jsonify([o.to_dict() for o in openings])
+
+# --- POST: Toggle Favorite ---
+@api.route('/openings/<int:id>/favorite', methods=['POST']) # <--- ADDED
+def toggle_favorite(id):
+    opening = Opening.query.get_or_404(id)
+    if not has_edit_permission(opening):
+        return jsonify({'error': 'Permission denied'}), 403
+    
+    opening.is_favorite = not opening.is_favorite
+    db.session.commit()
+    return jsonify(opening.to_dict())
 
 # --- POST: Import Openings ---
 @api.route('/import', methods=['POST'])

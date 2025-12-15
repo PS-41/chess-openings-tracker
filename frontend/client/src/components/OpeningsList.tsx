@@ -15,6 +15,7 @@ export interface Opening {
   id: number;
   name: string;
   side: 'white' | 'black';
+  is_favorite: boolean; // <--- ADDED
   variations: Variation[];
 }
 
@@ -24,13 +25,14 @@ interface OpeningsListProps {
   onVariationClick: (openingName: string, variation: Variation) => void;
   onAddVariation: (opening: Opening) => void;
   
-  // New Props for Edit/Delete
   onEditOpening: (opening: Opening) => void;
   onDeleteOpening: (opening: Opening) => void;
   onEditVariation: (opening: Opening, variation: Variation) => void;
   onDeleteVariation: (openingName: string, variation: Variation) => void;
+  
+  // New Prop
+  onToggleFavorite?: (opening: Opening) => void; // <--- ADDED
 
-  // New Props for Selection Mode
   selectionMode: boolean;
   selectedOpenings: Set<number>;
   selectedVariations: Set<number>;
@@ -47,6 +49,7 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
     onDeleteOpening,
     onEditVariation,
     onDeleteVariation,
+    onToggleFavorite, // <--- ADDED
     selectionMode,
     selectedOpenings,
     selectedVariations,
@@ -54,17 +57,12 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
     onToggleVariationSelection
 }) => {
   const filteredData = openings.filter(o => o.side === side);
-  
-  // State to track expanded openings (by ID)
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const toggleExpand = (id: number) => {
     const newSet = new Set(expandedIds);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
     setExpandedIds(newSet);
   };
 
@@ -97,22 +95,14 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                 ${isOpeningSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100'}
               `}
             >
-              {/* Parent Row - Clickable to Expand */}
               <div 
-                onClick={() => {
-                    if (selectionMode) {
-                        onToggleOpeningSelection(opening.id);
-                    } else {
-                        toggleExpand(opening.id);
-                    }
-                }}
+                onClick={() => selectionMode ? onToggleOpeningSelection(opening.id) : toggleExpand(opening.id)}
                 className={`
                   relative flex items-center justify-between p-4 cursor-pointer group
                   border-l-[6px] ${accentColor} bg-white hover:bg-gray-50 transition-colors
                 `}
               >
                 <div className="flex items-center gap-4 flex-1">
-                  {/* Selection Checkbox or Number Badge */}
                   {selectionMode ? (
                       <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                           <input 
@@ -123,33 +113,38 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                           />
                       </div>
                   ) : (
-                    <span 
-                        className={`
-                        flex-shrink-0 w-8 h-8 flex items-center justify-center 
-                        rounded-full font-bold text-xs tracking-tight ${numberBg}
-                        `}
-                    >
+                    <span className={`flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full font-bold text-xs tracking-tight ${numberBg}`}>
                         {index + 1}
                     </span>
                   )}
 
-                  {/* Opening Name */}
                   <span className="text-base font-semibold text-slate-800 tracking-tight">
                     {opening.name}
                   </span>
                   
-                  {/* Variation Count Badge */}
                   <span className="text-xs text-gray-400 font-medium bg-gray-100 px-2 py-0.5 rounded-full">
                     {opening.variations.length} {opening.variations.length === 1 ? 'variation' : 'variations'}
                   </span>
                 </div>
 
-                {/* Actions */}
                 <div className="flex items-center gap-2">
                   
                   {!selectionMode && (
                       <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 mr-2 border-r border-gray-200 pr-2 space-x-1">
-                          {/* Edit Opening Name */}
+                          
+                          {/* FAVORITE BUTTON */}
+                          {onToggleFavorite && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onToggleFavorite(opening); }}
+                                className={`p-1.5 rounded-full transition-colors ${opening.is_favorite ? 'text-yellow-400 hover:text-yellow-500 hover:bg-yellow-50' : 'text-gray-300 hover:text-yellow-400 hover:bg-gray-50'}`}
+                                title={opening.is_favorite ? "Unfavorite" : "Favorite"}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                    <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                          )}
+                          
                           <button
                             onClick={(e) => { e.stopPropagation(); onEditOpening(opening); }}
                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
@@ -159,7 +154,6 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
                              </svg>
                           </button>
-                          {/* Delete Opening */}
                           <button
                             onClick={(e) => { e.stopPropagation(); onDeleteOpening(opening); }}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
@@ -172,18 +166,10 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                       </div>
                   )}
 
-                  {/* Add Variation Button (Hidden in selection mode) */}
                   {!selectionMode && (
                     <button
-                        onClick={(e) => {
-                        e.stopPropagation();
-                        onAddVariation(opening);
-                        }}
-                        className="
-                        flex items-center justify-center w-8 h-8 rounded-full 
-                        text-gray-400 hover:text-green-600 hover:bg-green-50 
-                        transition-all duration-200 group relative
-                        "
+                        onClick={(e) => { e.stopPropagation(); onAddVariation(opening); }}
+                        className="flex items-center justify-center w-8 h-8 rounded-full text-gray-400 hover:text-green-600 hover:bg-green-50 transition-all duration-200"
                         title="Add Variation"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -192,7 +178,6 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                     </button>
                   )}
 
-                  {/* Chevron Icon */}
                   <div className={`text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -201,20 +186,13 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                 </div>
               </div>
 
-              {/* Variations List */}
-              <div 
-                className={`
-                  overflow-hidden transition-all duration-300 ease-in-out bg-gray-50/50
-                  ${isExpanded ? 'max-h-[500px] opacity-100 border-t border-gray-100' : 'max-h-0 opacity-0'}
-                `}
-              >
+              <div className={`overflow-hidden transition-all duration-300 ease-in-out bg-gray-50/50 ${isExpanded ? 'max-h-[500px] opacity-100 border-t border-gray-100' : 'max-h-0 opacity-0'}`}>
                   {opening.variations.length === 0 ? (
                     <div className="p-4 pl-16 text-sm text-gray-400 italic">No variations added yet.</div>
                   ) : (
                     <ul className="py-2">
                       {opening.variations.map((v) => {
                           const isVarSelected = selectedVariations.has(v.id);
-                          // If parent is selected, variation is implicitly selected visually
                           const isImplicitlySelected = isOpeningSelected;
 
                           return (
@@ -222,24 +200,18 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                             key={v.id}
                             onClick={() => {
                                 if (selectionMode) {
-                                    if (!isOpeningSelected) {
-                                        onToggleVariationSelection(v.id);
-                                    }
+                                    if (!isOpeningSelected) onToggleVariationSelection(v.id);
                                 } else {
                                     onVariationClick(opening.name, v);
                                 }
                             }}
                             className={`
-                                relative flex items-center px-4 py-2.5 pl-16 
-                                cursor-pointer 
+                                relative flex items-center px-4 py-2.5 pl-16 cursor-pointer 
                                 transition-all duration-200 ease-in-out text-sm font-medium group
-                                /* Updated Hover Styles */
-                                hover:bg-blue-50 hover:text-blue-700 hover:pl-[4.25rem]
-                                text-slate-600
+                                hover:bg-blue-50 hover:text-blue-700 hover:pl-[4.25rem] text-slate-600
                                 ${isImplicitlySelected || isVarSelected ? 'bg-blue-50/50 text-blue-800' : ''}
                             `}
                             >
-                                {/* Decorative connector line style */}
                                 <div className={`absolute left-[34px] top-0 bottom-0 w-px ${isImplicitlySelected || isVarSelected ? 'bg-blue-200' : 'bg-gray-200 group-hover:bg-blue-200'}`}></div>
                                 <div className={`absolute left-[34px] top-1/2 w-4 h-px ${isImplicitlySelected || isVarSelected ? 'bg-blue-200' : 'bg-gray-200 group-hover:bg-blue-200'}`}></div>
 
@@ -248,7 +220,7 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
                                          <input 
                                             type="checkbox" 
                                             checked={isImplicitlySelected || isVarSelected}
-                                            disabled={isOpeningSelected} // Disable if parent selected
+                                            disabled={isOpeningSelected}
                                             readOnly
                                             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
                                           />
@@ -257,7 +229,6 @@ const OpeningsList: React.FC<OpeningsListProps> = ({
 
                                 <span className={`truncate ${isImplicitlySelected || isVarSelected ? 'font-semibold' : ''}`}>{v.name}</span>
                                 
-                                {/* Actions for Variation (Hidden in Select Mode) */}
                                 {!selectionMode && (
                                     <div className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button 

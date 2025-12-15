@@ -15,8 +15,9 @@ class User(UserMixin, db.Model):
 
 class Opening(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False) # Removed unique=True constraint to allow multiple users to have same opening name
+    name = db.Column(db.String(100), nullable=False) 
     side = db.Column(db.String(10), nullable=False)
+    is_favorite = db.Column(db.Boolean, default=False) # <--- ADDED
     
     # Foreign Key to User (Nullable for Public/Guest openings)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
@@ -28,6 +29,7 @@ class Opening(db.Model):
             'id': self.id,
             'name': self.name,
             'side': self.side,
+            'is_favorite': self.is_favorite, # <--- ADDED
             'user_id': self.user_id,
             'variations': sorted([v.to_dict() for v in self.variations], key=lambda x: x['name'])
         }
