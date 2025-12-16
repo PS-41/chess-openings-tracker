@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify, current_app, send_from_directory,
 from flask_login import current_user
 from werkzeug.utils import secure_filename
 from .models import Opening, Variation, TutorialLink, db
+from sqlalchemy import func
 
 api = Blueprint('api', __name__)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -50,7 +51,7 @@ def remove_variation_image(variation):
 @api.route('/openings', methods=['GET'])
 def get_openings():
     mode = request.args.get('mode', 'public') # 'public' or 'private'
-    only_favorites = request.args.get('favorites') == 'true' # <--- ADDED
+    only_favorites = request.args.get('favorites') == 'true'
     
     query = Opening.query
     
@@ -60,15 +61,94 @@ def get_openings():
         # Guest mode / Public view
         query = query.filter_by(user_id=None)
         
-    if only_favorites: # <--- ADDED
+    if only_favorites:
         query = query.filter_by(is_favorite=True)
+
+    # Sort per-side by position (white/black independent order)
+    query = query.order_by(Opening.side.asc(), Opening.position.asc())
 
     openings = query.all()
         
     return jsonify([o.to_dict() for o in openings])
 
+# --- POST: Reorder Openings ---
+@api.route('/openings/reorder', methods=['POST'])
+def reorder_openings():
+    # Only allow if logged in or admin
+    if not current_user.is_authenticated and not session.get('is_admin_mode', False):
+        return jsonify({'error': 'Permission denied'}), 403
+
+    data = request.get_json()
+    ordered_ids = data.get('ids', [])
+
+    if not ordered_ids:
+        return jsonify({'status': 'success'})
+
+    openings = Opening.query.filter(Opening.id.in_(ordered_ids)).all()
+    opening_map = {op.id: op for op in openings}
+
+    # Enforce per-side reorder: all IDs must be same side and same ownership context
+    first = opening_map.get(ordered_ids[0])
+    if not first:
+        return jsonify({'error': 'Invalid opening ids'}), 400
+
+    target_side = first.side
+    target_user_id = first.user_id
+
+    for op_id in ordered_ids:
+        op = opening_map.get(op_id)
+        if not op:
+            return jsonify({'error': 'Invalid opening ids'}), 400
+        if op.side != target_side or op.user_id != target_user_id:
+            return jsonify({'error': 'Openings must be from the same side and same mode'}), 400
+        if not has_edit_permission(op):
+            return jsonify({'error': 'Permission denied'}), 403
+
+    for index, op_id in enumerate(ordered_ids):
+        opening_map[op_id].position = index
+    
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+# --- POST: Reorder Variations ---
+@api.route('/variations/reorder', methods=['POST'])
+def reorder_variations():
+    # Only allow if logged in or admin
+    if not current_user.is_authenticated and not session.get('is_admin_mode', False):
+        return jsonify({'error': 'Permission denied'}), 403
+
+    data = request.get_json()
+    ordered_ids = data.get('ids', [])
+
+    if not ordered_ids:
+        return jsonify({'status': 'success'})
+
+    variations = Variation.query.filter(Variation.id.in_(ordered_ids)).all()
+    variation_map = {v.id: v for v in variations}
+
+    first = variation_map.get(ordered_ids[0])
+    if not first:
+        return jsonify({'error': 'Invalid variation ids'}), 400
+
+    target_opening_id = first.opening_id
+
+    for var_id in ordered_ids:
+        var = variation_map.get(var_id)
+        if not var:
+            return jsonify({'error': 'Invalid variation ids'}), 400
+        if var.opening_id != target_opening_id:
+            return jsonify({'error': 'Variations must belong to the same opening'}), 400
+        if not has_edit_permission(var.opening):
+            return jsonify({'error': 'Permission denied'}), 403
+
+    for index, var_id in enumerate(ordered_ids):
+        variation_map[var_id].position = index
+    
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
 # --- POST: Toggle Favorite ---
-@api.route('/openings/<int:id>/favorite', methods=['POST']) # <--- ADDED
+@api.route('/openings/<int:id>/favorite', methods=['POST'])
 def toggle_favorite(id):
     opening = Opening.query.get_or_404(id)
     if not has_edit_permission(opening):
@@ -87,11 +167,20 @@ def import_openings():
     data = request.get_json()
     opening_ids = data.get('opening_ids', []) # List of public opening IDs
     
-    public_openings = Opening.query.filter(Opening.id.in_(opening_ids), Opening.user_id == None).all()
+    public_openings = Opening.query.filter(
+        Opening.id.in_(opening_ids),
+        Opening.user_id == None
+    ).order_by(Opening.position.asc(), Opening.id.asc()).all()
     
     count = 0
     upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
     os.makedirs(upload_folder, exist_ok=True)
+
+    # Determine next available position PER SIDE (so white/black don't collide)
+    next_pos_by_side = {}
+    for side in ['white', 'black']:
+        max_pos = db.session.query(func.max(Opening.position)).filter_by(user_id=current_user.id, side=side).scalar()
+        next_pos_by_side[side] = (max_pos + 1) if max_pos is not None else 0
 
     for pub_op in public_openings:
         # Create Opening Copy
@@ -104,11 +193,19 @@ def import_openings():
         if existing_user_op:
             continue
             
-        new_op = Opening(name=pub_op.name, side=pub_op.side, user_id=current_user.id)
+        new_op = Opening(
+            name=pub_op.name, 
+            side=pub_op.side, 
+            user_id=current_user.id,
+            position=next_pos_by_side.get(pub_op.side, 0) # Set position per side
+        )
+        next_pos_by_side[pub_op.side] = next_pos_by_side.get(pub_op.side, 0) + 1
+
         db.session.add(new_op)
         db.session.commit() # Commit to get ID
         
-        for pub_var in pub_op.variations:
+        pub_vars_sorted = sorted(pub_op.variations, key=lambda v: (v.position or 0, v.id))
+        for i, pub_var in enumerate(pub_vars_sorted):
             # Handle Image Copying (to avoid deleting shared images later)
             new_image_filename = None
             if pub_var.image_filename:
@@ -130,7 +227,8 @@ def import_openings():
                 moves=pub_var.moves,
                 lichess_link=pub_var.lichess_link,
                 image_filename=new_image_filename,
-                notes=pub_var.notes
+                notes=pub_var.notes,
+                position=i # Maintain relative order
             )
             db.session.add(new_var)
             db.session.commit()
@@ -178,7 +276,11 @@ def add_opening():
         if existing_pgn:
             return jsonify({'error': f"This moves sequence already exists in '{opening.name}' ({existing_pgn.name})"}), 409
     else:
-        opening = Opening(name=name, side=side, user_id=owner_id)
+        # Calculate new position (per side)
+        max_pos = db.session.query(func.max(Opening.position)).filter_by(user_id=owner_id, side=side).scalar()
+        new_pos = (max_pos + 1) if max_pos is not None else 0
+        
+        opening = Opening(name=name, side=side, user_id=owner_id, position=new_pos)
         db.session.add(opening)
         db.session.commit()
 
@@ -200,13 +302,18 @@ def add_opening():
             file.save(os.path.join(upload_folder, save_name))
             image_filename = save_name
 
+    # Calculate variation position
+    max_var_pos = db.session.query(func.max(Variation.position)).filter_by(opening_id=opening.id).scalar()
+    new_var_pos = (max_var_pos + 1) if max_var_pos is not None else 0
+
     new_variation = Variation(
         opening_id=opening.id,
         name=variation_name,
         moves=moves,
         lichess_link=generated_lichess_link,
         image_filename=image_filename,
-        notes=notes
+        notes=notes,
+        position=new_var_pos
     )
     
     db.session.add(new_variation)

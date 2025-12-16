@@ -55,6 +55,48 @@ function Dashboard() {
       }
   };
 
+  // Reorder Handlers
+  const handleReorderOpenings = async (newOpenings: Opening[]) => {
+      // 1. Optimistic Update (update only the affected side)
+      // Since newOpenings contains only 'white' or 'black' subset, we need to merge
+      const affectedSide = newOpenings[0]?.side;
+      if (!affectedSide) return;
+
+      const merged = [
+          ...openings.filter(o => o.side !== affectedSide),
+          ...newOpenings
+      ];
+      setOpenings(merged);
+
+      // 2. Persist to Backend
+      try {
+          await axios.post('/api/openings/reorder', { ids: newOpenings.map(o => o.id) }, { withCredentials: true });
+      } catch (e) {
+          console.error("Reorder openings failed", e);
+          // Revert on error? For now, we assume success or refresh.
+          fetchOpenings();
+      }
+  };
+
+  const handleReorderVariations = async (openingId: number, newVariations: Variation[]) => {
+      // 1. Optimistic Update
+      setOpenings(prev => prev.map(o => {
+          if (o.id === openingId) {
+              return { ...o, variations: newVariations };
+          }
+          return o;
+      }));
+
+      // 2. Persist
+      try {
+          await axios.post('/api/variations/reorder', { ids: newVariations.map(v => v.id) }, { withCredentials: true });
+      } catch (e) {
+          console.error("Reorder variations failed", e);
+          fetchOpenings();
+      }
+  };
+
+
   // Check Auth & Fetch Data
   useEffect(() => {
     const init = async () => {
@@ -194,6 +236,9 @@ function Dashboard() {
   };
 
   if (loadingAuth) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+
+  // Permissions for dragging
+  const canDrag = !isGuestMode || (isGuestMode && isAdminMode);
 
   return (
     <div className="min-h-screen bg-gray-50/50 font-sans pb-24">
@@ -378,6 +423,11 @@ function Dashboard() {
                                 selectedVariations={selectedVariationIds}
                                 onToggleOpeningSelection={(id) => { const s = new Set(selectedOpeningIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedOpeningIds(s); }}
                                 onToggleVariationSelection={(id) => { const s = new Set(selectedVariationIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedVariationIds(s); }}
+                                
+                                // Pass reordering handlers
+                                onReorderOpenings={handleReorderOpenings}
+                                onReorderVariations={handleReorderVariations}
+                                canDrag={canDrag}
                             />
                         </div>
                     )}
@@ -401,6 +451,11 @@ function Dashboard() {
                             selectedVariations={selectedVariationIds}
                             onToggleOpeningSelection={(id) => { const s = new Set(selectedOpeningIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedOpeningIds(s); }}
                             onToggleVariationSelection={(id) => { const s = new Set(selectedVariationIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedVariationIds(s); }}
+
+                            // Pass reordering handlers
+                            onReorderOpenings={handleReorderOpenings}
+                            onReorderVariations={handleReorderVariations}
+                            canDrag={canDrag}
                         />
                     )}
                  </div>
