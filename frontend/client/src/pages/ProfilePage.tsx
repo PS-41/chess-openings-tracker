@@ -5,7 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 const ProfilePage = () => {
     const [username, setUsername] = useState('');
     const [currentPassword, setCurrentPassword] = useState('');
-    const [newPassword,QRYPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
     const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
@@ -33,7 +33,7 @@ const ProfilePage = () => {
             
             setMessage({ type: 'success', text: 'Profile updated successfully!' });
             setCurrentPassword('');
-            QRYPassword('');
+            setNewPassword('');
         } catch (err: any) {
             setMessage({ type: 'error', text: err.response?.data?.error || 'Update failed' });
         } finally {
@@ -73,7 +73,7 @@ const ProfilePage = () => {
                         <input 
                             type="password"
                             value={newPassword}
-                            onChange={(e) => QRYPassword(e.target.value)}
+                            onChange={(e) => setNewPassword(e.target.value)}
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             placeholder="Leave blank to keep current"
                         />
