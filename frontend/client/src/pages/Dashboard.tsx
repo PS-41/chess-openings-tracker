@@ -235,6 +235,26 @@ function Dashboard() {
       });
   };
 
+  // --- Select All Logic ---
+  const areAllSelected = (side: 'white' | 'black') => {
+      const sideOpenings = openings.filter(o => o.side === side);
+      return sideOpenings.length > 0 && sideOpenings.every(o => selectedOpeningIds.has(o.id));
+  };
+
+  const toggleSelectAll = (side: 'white' | 'black') => {
+      const sideOpenings = openings.filter(o => o.side === side);
+      const allSelected = areAllSelected(side);
+      
+      const newSet = new Set(selectedOpeningIds);
+      if (allSelected) {
+          sideOpenings.forEach(o => newSet.delete(o.id));
+      } else {
+          sideOpenings.forEach(o => newSet.add(o.id));
+      }
+      setSelectedOpeningIds(newSet);
+  };
+
+
   if (loadingAuth) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   // Permissions for dragging
@@ -401,10 +421,20 @@ function Dashboard() {
                  <div key={side} className={`flex-1 ${!isSplit ? 'p-8 rounded-2xl shadow-sm border ' + (activeSide === 'white' ? 'bg-amber-50/50 border-amber-100' : 'bg-slate-100 border-slate-200') : ''}`}>
                     {isSplit && (
                         <div className={`p-6 rounded-2xl border min-h-[500px] ${side === 'white' ? 'bg-amber-50/50 border-amber-100' : 'bg-slate-200/50 border-slate-300'}`}>
-                            <h2 className={`text-xl font-bold mb-6 flex items-center gap-2 ${side === 'white' ? 'text-amber-900' : 'text-slate-800'}`}>
-                                <span className={`w-3 h-3 rounded-full ${side === 'white' ? 'bg-amber-400' : 'bg-slate-700'}`}></span>
-                                {side.charAt(0).toUpperCase() + side.slice(1)}
-                            </h2>
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className={`text-xl font-bold flex items-center gap-2 ${side === 'white' ? 'text-amber-900' : 'text-slate-800'}`}>
+                                    <span className={`w-3 h-3 rounded-full ${side === 'white' ? 'bg-amber-400' : 'bg-slate-700'}`}></span>
+                                    {side.charAt(0).toUpperCase() + side.slice(1)}
+                                </h2>
+                                {isSelectionMode && (
+                                    <button 
+                                        onClick={() => toggleSelectAll(side as 'white' | 'black')}
+                                        className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                                    >
+                                        {areAllSelected(side as 'white' | 'black') ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                )}
+                            </div>
                             <OpeningsList 
                                 side={side as 'white' | 'black'}
                                 openings={openings}
@@ -433,30 +463,42 @@ function Dashboard() {
                     )}
 
                     {!isSplit && (
-                        <OpeningsList 
-                            side={activeSide as 'white' | 'black'}
-                            openings={openings}
-                            onVariationClick={(name, v) => {
-                                const parent = openings.find(o => o.variations.some(vary => vary.id === v.id));
-                                if(parent) { setSelectedVariation({name, data: v, openingData: parent}); setIsDetailsOpen(true); }
-                            }}
-                            onAddVariation={openAddModal}
-                            onEditOpening={openRenameModal}
-                            onDeleteOpening={requestDeleteOpening}
-                            onEditVariation={openEditVariationModal}
-                            onDeleteVariation={requestDeleteVariation}
-                            onToggleFavorite={!isGuestMode ? handleToggleFavorite : undefined}
-                            selectionMode={isSelectionMode}
-                            selectedOpenings={selectedOpeningIds}
-                            selectedVariations={selectedVariationIds}
-                            onToggleOpeningSelection={(id) => { const s = new Set(selectedOpeningIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedOpeningIds(s); }}
-                            onToggleVariationSelection={(id) => { const s = new Set(selectedVariationIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedVariationIds(s); }}
+                        <>
+                            {isSelectionMode && (
+                                <div className="flex justify-end mb-4">
+                                     <button 
+                                        onClick={() => toggleSelectAll(side as 'white' | 'black')}
+                                        className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                                    >
+                                        {areAllSelected(side as 'white' | 'black') ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                </div>
+                            )}
+                            <OpeningsList 
+                                side={activeSide as 'white' | 'black'}
+                                openings={openings}
+                                onVariationClick={(name, v) => {
+                                    const parent = openings.find(o => o.variations.some(vary => vary.id === v.id));
+                                    if(parent) { setSelectedVariation({name, data: v, openingData: parent}); setIsDetailsOpen(true); }
+                                }}
+                                onAddVariation={openAddModal}
+                                onEditOpening={openRenameModal}
+                                onDeleteOpening={requestDeleteOpening}
+                                onEditVariation={openEditVariationModal}
+                                onDeleteVariation={requestDeleteVariation}
+                                onToggleFavorite={!isGuestMode ? handleToggleFavorite : undefined}
+                                selectionMode={isSelectionMode}
+                                selectedOpenings={selectedOpeningIds}
+                                selectedVariations={selectedVariationIds}
+                                onToggleOpeningSelection={(id) => { const s = new Set(selectedOpeningIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedOpeningIds(s); }}
+                                onToggleVariationSelection={(id) => { const s = new Set(selectedVariationIds); if(s.has(id)) s.delete(id); else s.add(id); setSelectedVariationIds(s); }}
 
-                            // Pass reordering handlers
-                            onReorderOpenings={handleReorderOpenings}
-                            onReorderVariations={handleReorderVariations}
-                            canDrag={canDrag}
-                        />
+                                // Pass reordering handlers
+                                onReorderOpenings={handleReorderOpenings}
+                                onReorderVariations={handleReorderVariations}
+                                canDrag={canDrag}
+                            />
+                        </>
                     )}
                  </div>
              ))}
