@@ -218,7 +218,7 @@ function Dashboard() {
       });
   };
 
-  const requestDeleteVariation = (openingName: string, variation: Variation) => {
+  const requestDeleteVariation = (_openingName: string, variation: Variation) => {
       requirePermission(() => {
         setItemsToDelete({ openings: [], variations: [variation.id] });
         setIsDeleteWarningOpen(true);
