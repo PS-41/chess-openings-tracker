@@ -163,6 +163,28 @@ function Dashboard() {
       await axios.post('/api/auth/logout', {}, { withCredentials: true });
       navigate('/');
   };
+  
+  // --- Admin Backup Handler ---
+  const handleExportBackup = async () => {
+      try {
+          const response = await axios.get('/api/admin/export-backup', {
+              responseType: 'blob',
+              withCredentials: true
+          });
+          
+          // Create download link
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', 'chess_backup.zip');
+          document.body.appendChild(link);
+          link.click();
+          link.parentNode?.removeChild(link);
+      } catch (error) {
+          console.error("Export failed", error);
+          alert("Failed to export backup. Ensure you are in Admin Mode.");
+      }
+  };
 
   // --- Normal Handlers ---
   const openAddModal = (openingToAddTo: Opening | null = null) => {
@@ -346,7 +368,10 @@ function Dashboard() {
                         {isAdminMode ? 'Admin Mode' : 'Guest View'}
                      </span>
                      {isAdminMode ? (
-                        <button onClick={async () => { await axios.post('/api/auth/exit-admin', {}, { withCredentials: true }); setIsAdminMode(false); }} className="text-xs text-red-500 hover:underline">Exit</button>
+                        <>
+                            <button onClick={handleExportBackup} className="text-xs text-emerald-600 hover:underline mr-2 font-semibold" title="Download DB and Images">Backup</button>
+                            <button onClick={async () => { await axios.post('/api/auth/exit-admin', {}, { withCredentials: true }); setIsAdminMode(false); }} className="text-xs text-red-500 hover:underline">Exit</button>
+                        </>
                      ) : (
                         <button onClick={() => navigate('/login')} className="text-xs text-blue-600 hover:underline">Login</button>
                      )}

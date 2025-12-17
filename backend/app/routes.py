@@ -2,7 +2,9 @@ import os
 import shutil
 import urllib.parse
 import uuid
-from flask import Blueprint, request, jsonify, current_app, send_from_directory, session
+import zipfile
+import io
+from flask import Blueprint, request, jsonify, current_app, send_from_directory, session, send_file
 from flask_login import current_user
 from werkzeug.utils import secure_filename
 from .models import Opening, Variation, TutorialLink, db
@@ -464,3 +466,51 @@ def batch_delete():
 def serve_image(filename):
     upload_folder = os.path.join(current_app.root_path, '..', 'uploads')
     return send_from_directory(upload_folder, filename)
+
+# --- GET: Admin Export Backup ---
+@api.route('/admin/export-backup', methods=['GET'])
+def export_backup():
+    # Only allow if in Admin Mode (guest + admin pass)
+    if not session.get('is_admin_mode', False):
+        return jsonify({'error': 'Permission denied'}), 403
+
+    # Paths
+    # current_app.root_path usually points to .../backend/app
+    backend_dir = os.path.dirname(current_app.root_path) # Points to .../backend
+    
+    # Priority: Check for instance/openings.db first (User verified location), then fallback to backend/openings.db
+    possible_paths = [
+        os.path.join(backend_dir, 'instance', 'openings.db'),
+        os.path.join(backend_dir, 'openings.db')
+    ]
+    
+    db_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            db_path = path
+            break
+            
+    uploads_dir = os.path.join(backend_dir, 'uploads')
+
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # 1. Add Database
+        if db_path and os.path.exists(db_path):
+            zf.write(db_path, 'openings.db')
+        
+        # 2. Add Uploads Folder
+        if os.path.exists(uploads_dir):
+            for root, dirs, files in os.walk(uploads_dir):
+                for file in files:
+                    abs_path = os.path.join(root, file)
+                    # We want the path inside zip to be uploads/filename.png
+                    rel_path = os.path.relpath(abs_path, backend_dir)
+                    zf.write(abs_path, rel_path)
+    
+    memory_file.seek(0)
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='chess_backup.zip'
+    )
